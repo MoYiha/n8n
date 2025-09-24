@@ -1,7 +1,8 @@
 import { ModuleRegistry, Logger } from '@n8n/backend-common';
 import { GLOBAL_OWNER_ROLE, type AuthenticatedRequest } from '@n8n/db';
-import { Get, Patch, RestController } from '@n8n/decorators';
+import { Get, Patch, Post, RestController } from '@n8n/decorators';
 
+import { McpServerApiKeyService } from './mcp-api-key.service';
 import { McpSettingsService } from './mcp.settings.service';
 import { isMcpSettingsUpdateBody } from './mcp.typeguards';
 import { BadRequestError } from '../../errors/response-errors/bad-request.error';
@@ -13,6 +14,7 @@ export class McpSettingsController {
 		private readonly mcpSettingsService: McpSettingsService,
 		private readonly logger: Logger,
 		private readonly moduleRegistry: ModuleRegistry,
+		private readonly mcpServerApiKeyService: McpServerApiKeyService,
 	) {}
 
 	@Get('/settings')
@@ -40,5 +42,32 @@ export class McpSettingsController {
 			});
 		}
 		return { mcpAccessEnabled: enabled };
+	}
+
+	@Get('/api-key')
+	async getApiKeyForMcpServer(req: AuthenticatedRequest) {
+		const apiKey = await this.mcpServerApiKeyService.findServerApiKeyForUser(req.user);
+
+		if (!apiKey) {
+			const newApiKey = await this.mcpServerApiKeyService.createMcpServerApiKey(req.user);
+			return newApiKey;
+		}
+
+		return apiKey;
+	}
+
+	@Post('/api-key/rotate')
+	async rotateApiKeyForMcpServer(req: AuthenticatedRequest) {
+		const apiKey = await this.mcpServerApiKeyService.findServerApiKeyForUser(req.user);
+
+		if (!apiKey) {
+			throw new BadRequestError('No existing MCP server API key to rotate');
+		}
+
+		await this.mcpServerApiKeyService.deleteApiKeyForUser(req.user);
+
+		const newApiKey = await this.mcpServerApiKeyService.createMcpServerApiKey(req.user);
+
+		return newApiKey;
 	}
 }
